@@ -1,16 +1,63 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Menu, User, Bot, PlusCircle, Trash2, Sun, Moon, MessageSquare, Clock, LogOut, Copy, Check } from 'lucide-react';
+import { Send, Menu, User, Bot, PlusCircle, Trash2, Sun, Moon, MessageSquare, Clock, LogOut, Copy, Check, Mic, Share2, Paperclip, X, BrainCircuit, Flame, ListChecks, AlertCircle, GraduationCap, HeartHandshake } from 'lucide-react';
 import { PeacockFeatherIcon } from './PeacockFeatherIcon';
 import Markdown from 'markdown-to-jsx';
 import Login from './Login';
 import Onboarding from './Onboarding';
 import Dashboard from './Dashboard';
-import DailyCheckIn from './DailyCheckIn';
-import Analytics from './Analytics';
-import { logoutUser, saveChatSessions, loadChatSessions, loadUserMemories, loadUserProfile, saveUserProfile } from './firebase';
-import { processChatMessage } from './chatbotEngine';
-import { addMemory, loadLifeMemory, saveExtractedMemories, upsertTodayCheckin } from './localStore';
+import { logoutUser, saveChatSessions, loadChatSessions, loadUserMemories, loadUserProfile, saveUserProfile } from './localAuthStore';
+import { processChatMessage, processChatMessageAsync } from './chatbotEngine';
+import { addMemory, loadLifeMemory, saveExtractedMemories } from './localStore';
 import './App.css';
+
+const voiceLanguages = [
+  { code: 'en-IN', label: 'EN', name: 'English' },
+  { code: 'hi-IN', label: 'HI', name: 'Hindi' },
+  { code: 'kn-IN', label: 'KN', name: 'Kannada' },
+];
+
+const readableFileTypes = [
+  'text/',
+  'application/json',
+  'application/xml',
+  'application/javascript',
+  'application/typescript',
+  'application/x-javascript',
+  'application/x-ndjson',
+  'application/csv',
+];
+
+const readableFileExtensions = /\.(txt|md|markdown|csv|json|jsonl|xml|html|css|js|jsx|ts|tsx|py|java|c|cpp|h|hpp|cs|go|rs|php|rb|sql|yaml|yml|log)$/i;
+const maxReadableFileBytes = 2 * 1024 * 1024;
+const maxStoredFileChars = 50000;
+
+const isReadableFile = (file) => (
+  readableFileTypes.some((type) => file.type.startsWith(type) || file.type === type)
+  || readableFileExtensions.test(file.name)
+);
+
+const readTextFile = (file) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  const slice = file.slice(0, maxReadableFileBytes);
+  reader.onload = () => resolve(String(reader.result || ''));
+  reader.onerror = () => reject(reader.error || new Error('Could not read file'));
+  reader.readAsText(slice);
+});
+
+const formatBytes = (bytes = 0) => {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} B`;
+};
+
+const quickActions = [
+  { label: 'Help me focus', icon: BrainCircuit, prompt: 'Help me focus. Ask what is distracting me most and guide me calmly.' },
+  { label: 'Solve my problem', icon: ListChecks, prompt: 'Help me solve a real problem. Ask me the right question first.' },
+  { label: 'Study support', icon: GraduationCap, prompt: 'Give me study support for my current goal. Help me decide what to do first.' },
+  { label: 'Calm my mind', icon: AlertCircle, prompt: 'I feel overwhelmed. Calm my mind and help me think clearly.' },
+  { label: 'Motivate me', icon: Flame, prompt: 'I feel stuck. Give me a realistic motivation boost without fake positivity.' },
+  { label: 'Talk to me', icon: HeartHandshake, prompt: 'Talk to me like a calm companion. Help me understand what I am feeling and what to do next.' },
+];
 
 const CodeBlock = ({ className, children }) => {
   const match = /language-(\w+)/.exec(className || '');
@@ -20,6 +67,15 @@ const CodeBlock = ({ className, children }) => {
     <code className={className} style={{ background: 'rgba(0,0,0,0.2)', padding: '0.2rem 0.4rem', borderRadius: '0.25rem', fontFamily: 'monospace' }}>
       {children}
     </code>
+  );
+};
+
+const QuickActionPill = ({ action, onClick, disabled = false }) => {
+  const Icon = action.icon;
+  return (
+    <button type="button" onClick={() => onClick(action.prompt)} disabled={disabled}>
+      <Icon size={14} /> {action.label}
+    </button>
   );
 };
 
@@ -34,9 +90,7 @@ export default function App() {
     return saved ? JSON.parse(saved) : null;
   });
 
-  const [currentView, setCurrentView] = useState('dashboard'); // 'onboarding', 'dashboard', 'analytics', 'chat'
-  const [showCheckIn, setShowCheckIn] = useState(false);
-
+  const [currentView, setCurrentView] = useState('dashboard'); // 'onboarding', 'dashboard', 'chat'
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const saved = localStorage.getItem('theme_dark_mode');
     return saved !== null ? JSON.parse(saved) : true;
@@ -62,15 +116,27 @@ export default function App() {
   const [activeSessionId, setActiveSessionId] = useState(null);
 
   const [input, setInput] = useState('');
+  const [voiceLanguage, setVoiceLanguage] = useState(() => {
+    const saved = localStorage.getItem('preferred_language');
+    return saved || userProfile?.preferredLanguage || 'en-IN';
+  });
   const [isTyping, setIsTyping] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState('');
   
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [copiedIdx, setCopiedIdx] = useState(null);
+  const [shareStatus, setShareStatus] = useState('');
   const messagesEndRef = useRef(null);
+  const textareaRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const recognitionRef = useRef(null);
+  const voiceBaseInputRef = useRef('');
 
   const activeSession = sessions.find(s => s.id === activeSessionId) || null;
   const messages = activeSession ? activeSession.messages : [];
+  const sessionFiles = activeSession?.files || [];
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -93,14 +159,18 @@ export default function App() {
   }, [isDarkMode]);
 
   useEffect(() => {
-    if (userAuth && userProfile) {
-      const today = new Date().toDateString();
-      const lastCheckIn = localStorage.getItem(`last_checkin_${userAuth.uid}`);
-      if (lastCheckIn !== today && currentView === 'dashboard') {
-        setShowCheckIn(true);
-      }
+    return () => recognitionRef.current?.stop();
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('preferred_language', voiceLanguage);
+  }, [voiceLanguage]);
+
+  useEffect(() => {
+    if (userProfile?.preferredLanguage) {
+      setVoiceLanguage(userProfile.preferredLanguage);
     }
-  }, [userAuth, userProfile, currentView]);
+  }, [userProfile?.preferredLanguage]);
 
   const handleLogin = async (user) => {
     setUserAuth(user);
@@ -116,6 +186,7 @@ export default function App() {
     if (profile) {
       setUserProfile(profile);
       localStorage.setItem('user_full_profile', JSON.stringify(profile));
+      if (profile.preferredLanguage) setVoiceLanguage(profile.preferredLanguage);
       setCurrentView('dashboard');
     } else {
       setCurrentView('onboarding');
@@ -149,16 +220,11 @@ export default function App() {
   const handleOnboardingComplete = async (data) => {
     const fullProfile = { ...data, uid: userAuth.uid, email: userAuth.email };
     setUserProfile(fullProfile);
+    setVoiceLanguage(fullProfile.preferredLanguage || 'en-IN');
     localStorage.setItem('user_full_profile', JSON.stringify(fullProfile));
     localStorage.setItem(`user_full_profile_${userAuth.uid}`, JSON.stringify(fullProfile));
     await saveUserProfile(userAuth.uid, fullProfile);
     setCurrentView('dashboard');
-  };
-
-  const handleCheckInSubmit = (data) => {
-    upsertTodayCheckin(userAuth.uid, data);
-    localStorage.setItem(`last_checkin_${userAuth.uid}`, new Date().toDateString());
-    setShowCheckIn(false);
   };
 
   const updateMessages = (newMessagesOrUpdater) => {
@@ -182,10 +248,13 @@ export default function App() {
   };
 
   const createNewChat = () => {
+    const lifeMemory = userAuth?.uid ? loadLifeMemory(userAuth.uid) : {};
+    const greeting = processChatMessage('hello', userProfile, { ...lifeMemory, memories: userMemories }, { language: voiceLanguage });
     const newSession = {
       id: Date.now(),
       title: 'New Chat',
-      messages: [{ role: 'bot', content: `Hello ${userProfile?.fullName?.split(' ')[0] || ''}! I am your local personal life assistant. Ask for a schedule, study plan, workout, mood support, sleep advice, hydration tracking, or daily summary.`, timestamp: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) }]
+      files: [],
+      messages: [{ role: 'bot', content: greeting, timestamp: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) }]
     };
     setSessions([newSession, ...sessions]);
     setActiveSessionId(newSession.id);
@@ -205,6 +274,7 @@ export default function App() {
 
   const handleSend = () => {
     if (!input.trim() || isTyping) return;
+    recognitionRef.current?.stop();
 
     const userMsg = { role: 'user', content: input.trim(), timestamp: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) };
     const newHistory = [...messages, userMsg];
@@ -212,21 +282,112 @@ export default function App() {
     setInput('');
     setIsTyping(true);
 
-    // Simulate thinking delay for local engine
-    setTimeout(() => {
-      const lifeMemory = loadLifeMemory(userAuth.uid);
-      const responseContent = processChatMessage(userMsg.content, userProfile, { ...lifeMemory, memories: userMemories });
-      addMemory(userAuth.uid, `User asked: ${userMsg.content}`);
+    // Simulate thoughtful local reasoning, then stream the response in the UI.
+    setTimeout(async () => {
+      addMemory(userAuth.uid, `User said: ${userMsg.content}`);
       const extraction = saveExtractedMemories(userAuth.uid, userMsg.content);
       const updatedMemories = extraction.memories;
       setUserMemories(updatedMemories);
-      const captureNote = extraction.extracted.tasks.length || extraction.extracted.memories.length
-        ? `\n\n_I saved ${extraction.extracted.tasks.length ? `${extraction.extracted.tasks.length} task(s)` : ''}${extraction.extracted.tasks.length && extraction.extracted.memories.length ? ' and ' : ''}${extraction.extracted.memories.length ? `${extraction.extracted.memories.length} memory note(s)` : ''} locally._`
-        : '';
-      const botMsg = { role: 'bot', content: `${responseContent}${captureNote}`, timestamp: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) };
+      const lifeMemory = loadLifeMemory(userAuth.uid);
+      const currentSession = sessions.find((session) => session.id === activeSessionId);
+      const responseContent = await processChatMessageAsync(userMsg.content, userProfile, { ...lifeMemory, memories: updatedMemories }, { language: voiceLanguage, files: currentSession?.files || [], recentMessages: newHistory.slice(-8) });
+      const fullResponse = responseContent;
+      const botId = Date.now() + 10;
+      const botMsg = { id: botId, role: 'bot', content: '', streaming: true, timestamp: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) };
       updateMessages([...newHistory, botMsg]);
-      setIsTyping(false);
+
+      let index = 0;
+      const step = Math.max(18, Math.ceil(fullResponse.length / 80));
+      const stream = window.setInterval(() => {
+        index = Math.min(fullResponse.length, index + step);
+        updateMessages((currentMessages) => currentMessages.map((message) => (
+          message.id === botId
+            ? { ...message, content: fullResponse.slice(0, index), streaming: index < fullResponse.length }
+            : message
+        )));
+
+        if (index >= fullResponse.length) {
+          window.clearInterval(stream);
+          setIsTyping(false);
+        }
+      }, 24);
     }, 600);
+  };
+
+  const handleQuickAction = (prompt) => {
+    if (isTyping) return;
+    updateChatInput(prompt);
+    textareaRef.current?.focus();
+  };
+
+  const addFilesToActiveSession = (files) => {
+    setSessions(prevSessions => prevSessions.map(session => {
+      if (session.id !== activeSessionId) return session;
+      const existingFiles = session.files || [];
+      return { ...session, files: [...files, ...existingFiles].slice(0, 8) };
+    }));
+  };
+
+  const handleFileUpload = async (event) => {
+    const selectedFiles = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (!selectedFiles.length || !activeSessionId) return;
+
+    const readable = selectedFiles.filter(isReadableFile);
+    const unsupported = selectedFiles.filter((file) => !isReadableFile(file));
+
+    if (unsupported.length) {
+      setVoiceStatus(`Skipped unsupported file type: ${unsupported.map((file) => file.name).join(', ')}`);
+      setTimeout(() => setVoiceStatus(''), 3600);
+    }
+
+    if (!readable.length) return;
+
+    setVoiceStatus('Reading file...');
+
+    const loadedFiles = await Promise.all(readable.map(async (file) => {
+      try {
+        const rawText = await readTextFile(file);
+        const text = rawText.slice(0, maxStoredFileChars);
+        return {
+          id: `${Date.now()}-${file.name}`,
+          name: file.name,
+          type: file.type || 'text/plain',
+          size: file.size,
+          text,
+          truncated: file.size > maxReadableFileBytes || rawText.length > maxStoredFileChars,
+          addedAt: new Date().toISOString(),
+        };
+      } catch {
+        return null;
+      }
+    }));
+
+    const usableFiles = loadedFiles.filter(Boolean);
+    if (!usableFiles.length) {
+      setVoiceStatus('Could not read that file. Try a text, markdown, CSV, JSON, or code file.');
+      setTimeout(() => setVoiceStatus(''), 3600);
+      return;
+    }
+
+    addFilesToActiveSession(usableFiles);
+    const fileNames = usableFiles.map((file) => file.name).join(', ');
+    const botMsg = {
+      role: 'bot',
+      content: `Attached **${fileNames}**. Ask me to summarize it, explain it, find something inside it, or answer questions from it.${usableFiles.some((file) => file.truncated) ? '\n\n_Note: very large files are read from the beginning and trimmed for browser performance._' : ''}`,
+      timestamp: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+    };
+    updateMessages((currentMessages) => [...currentMessages, botMsg]);
+    setVoiceStatus(`Added ${usableFiles.length} file(s)`);
+    setTimeout(() => setVoiceStatus(''), 2200);
+  };
+
+  const removeSessionFile = (fileId) => {
+    setSessions(prevSessions => prevSessions.map(session => (
+      session.id === activeSessionId
+        ? { ...session, files: (session.files || []).filter((file) => file.id !== fileId) }
+        : session
+    )));
   };
 
   const handleKeyDown = (e) => {
@@ -236,10 +397,116 @@ export default function App() {
     }
   };
 
+  const updateChatInput = (value) => {
+    setInput(value);
+    requestAnimationFrame(() => {
+      if (!textareaRef.current) return;
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+    });
+  };
+
+  const handleVoiceInput = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setVoiceStatus('Voice input is not supported in this browser.');
+      setTimeout(() => setVoiceStatus(''), 2600);
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = voiceLanguage;
+    recognition.interimResults = true;
+    recognition.continuous = true;
+    voiceBaseInputRef.current = input.trim();
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      setVoiceStatus('Listening...');
+      textareaRef.current?.focus();
+    };
+
+    recognition.onresult = (event) => {
+      let transcript = '';
+
+      for (let index = 0; index < event.results.length; index += 1) {
+        transcript += event.results[index][0].transcript;
+      }
+
+      const cleanTranscript = transcript.trim();
+      const baseInput = voiceBaseInputRef.current;
+      updateChatInput(baseInput && cleanTranscript ? `${baseInput} ${cleanTranscript}` : cleanTranscript || baseInput);
+    };
+
+    recognition.onerror = () => {
+      setIsListening(false);
+      setVoiceStatus('Voice input stopped. Try again.');
+      setTimeout(() => setVoiceStatus(''), 2600);
+    };
+    recognition.onend = () => {
+      setIsListening(false);
+      setTimeout(() => setVoiceStatus(''), 1200);
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  };
+
   const handleCopy = (text, idx) => {
     navigator.clipboard.writeText(text);
     setCopiedIdx(idx);
     setTimeout(() => setCopiedIdx(null), 2000);
+  };
+
+  const handleShareChat = async () => {
+    if (!messages.length) return;
+
+    const chatText = messages
+      .map((msg) => `${msg.role === 'user' ? 'You' : 'Zeno'}: ${msg.content}`)
+      .join('\n\n');
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: activeSession.title,
+          text: chatText,
+        });
+        setShareStatus('Shared');
+      } else {
+        await navigator.clipboard.writeText(chatText);
+        setShareStatus('Copied');
+      }
+    } catch {
+      setShareStatus('Cancelled');
+    }
+
+    setTimeout(() => setShareStatus(''), 1800);
+  };
+
+  const handleShareMessage = async (msg) => {
+    const text = `${msg.role === 'user' ? 'You' : 'Zeno'}: ${msg.content}`;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: activeSession.title,
+          text,
+        });
+      } else {
+        await navigator.clipboard.writeText(text);
+        setShareStatus('Copied');
+        setTimeout(() => setShareStatus(''), 1800);
+      }
+    } catch {
+      setShareStatus('Cancelled');
+      setTimeout(() => setShareStatus(''), 1800);
+    }
   };
 
   if (!userAuth) {
@@ -252,13 +519,11 @@ export default function App() {
 
   return (
     <div className="app-container">
-      {showCheckIn && <DailyCheckIn onClose={() => setShowCheckIn(false)} onSubmit={handleCheckInSubmit} />}
-
       {/* Sidebar */}
       <div className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-header" onClick={() => { setCurrentView('dashboard'); setActiveSessionId(null); if(window.innerWidth <= 768) setSidebarOpen(false); }} style={{ cursor: 'pointer' }}>
           <PeacockFeatherIcon className="text-accent-primary" size={28} />
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 600, letterSpacing: '-0.02em', background: 'linear-gradient(135deg, var(--text-primary), var(--text-secondary))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Parthasarathi</h2>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 600, letterSpacing: '-0.02em', background: 'linear-gradient(135deg, var(--text-primary), var(--text-secondary))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Zeno</h2>
         </div>
         
         <div className="sidebar-content" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -322,11 +587,7 @@ export default function App() {
       {/* Main Area */}
       <div className="main-area">
         {currentView === 'dashboard' && (
-          <Dashboard user={userAuth} userProfile={userProfile} onNewChat={createNewChat} onOpenAnalytics={() => setCurrentView('analytics')} />
-        )}
-        
-        {currentView === 'analytics' && (
-          <Analytics onBack={() => setCurrentView('dashboard')} user={userAuth} />
+          <Dashboard user={userAuth} userProfile={userProfile} onNewChat={createNewChat} />
         )}
 
         {currentView === 'chat' && activeSession && (
@@ -337,10 +598,33 @@ export default function App() {
                 <Menu size={24} />
               </button>
               <h1 style={{ fontSize: '1.1rem', fontWeight: 500 }}>{activeSession.title}</h1>
+              <div className="chat-header-actions">
+                {shareStatus && <span className="share-status">{shareStatus}</span>}
+                <button
+                  className="btn-icon"
+                  onClick={handleShareChat}
+                  title="Share chat"
+                  aria-label="Share chat"
+                >
+                  <Share2 size={18} />
+                </button>
+              </div>
             </header>
 
             {/* Chat Area */}
             <div className="chat-container" onClick={() => setSidebarOpen(false)}>
+              {messages.length <= 1 && (
+                <div className="chat-welcome-panel">
+                  <p className="eyebrow">Zeno</p>
+                  <h2>What do you want to talk through?</h2>
+                  <p className="muted">Bring a problem, a rough feeling, a study block, or a small next step.</p>
+                  <div className="quick-action-row welcome-actions">
+                    {quickActions.map((action) => (
+                      <QuickActionPill key={action.label} action={action} onClick={handleQuickAction} />
+                    ))}
+                  </div>
+                </div>
+              )}
               {messages.map((msg, idx) => (
                 <div
                   key={idx} 
@@ -356,7 +640,18 @@ export default function App() {
                     <div className="message-bubble glass-panel-hover" style={{ position: 'relative' }}>
                       <div className="message-content">
                         {msg.role === 'bot' ? (
-                          <Markdown options={{ overrides: { code: { component: CodeBlock } } }}>{msg.content}</Markdown>
+                          msg.content ? (
+                            <>
+                              <Markdown options={{ overrides: { code: { component: CodeBlock } } }}>{msg.content}</Markdown>
+                              {msg.streaming && <span className="stream-cursor" />}
+                            </>
+                          ) : (
+                            <div className="typing-inline">
+                              <div className="typing-dot"></div>
+                              <div className="typing-dot"></div>
+                              <div className="typing-dot"></div>
+                            </div>
+                          )
                         ) : (
                           msg.content
                         )}
@@ -364,11 +659,12 @@ export default function App() {
                     </div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.25rem', padding: '0 0.5rem', display: 'flex', gap: '0.5rem' }}>
                       {msg.timestamp}
-                      {msg.role === 'bot' && (
-                        <button onClick={() => handleCopy(msg.content, idx)} style={{ background: 'none', border: 'none', color: copiedIdx === idx ? '#10b981' : 'var(--text-secondary)', cursor: 'pointer', padding: 0 }}>
-                          {copiedIdx === idx ? <Check size={12} /> : <Copy size={12} />}
-                        </button>
-                      )}
+                      <button onClick={() => handleCopy(msg.content, idx)} style={{ background: 'none', border: 'none', color: copiedIdx === idx ? '#10b981' : 'var(--text-secondary)', cursor: 'pointer', padding: 0 }} title="Copy message" aria-label="Copy message">
+                        {copiedIdx === idx ? <Check size={12} /> : <Copy size={12} />}
+                      </button>
+                      <button onClick={() => handleShareMessage(msg)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: 0 }} title="Share message" aria-label="Share message">
+                        <Share2 size={12} />
+                      </button>
                     </div>
                   </div>
 
@@ -384,7 +680,7 @@ export default function App() {
                 </div>
               ))}
               
-              {isTyping && (
+              {isTyping && !messages.some((message) => message.streaming) && (
                 <div className="message-row bot">
                   <div className="message-avatar bot-avatar">
                     <Bot size={20} className="text-accent-primary" />
@@ -403,22 +699,77 @@ export default function App() {
 
             {/* Input Area */}
             <div className="input-area glass-panel" style={{ borderLeft: 'none', borderRight: 'none', borderBottom: 'none', borderRadius: 0, padding: '1rem' }}>
+              <div className="quick-action-row">
+                {quickActions.map((action) => (
+                  <QuickActionPill key={action.label} action={action} onClick={handleQuickAction} disabled={isTyping} />
+                ))}
+              </div>
+              {sessionFiles.length > 0 && (
+                <div className="file-context-row" aria-label="Attached files">
+                  {sessionFiles.map((file) => (
+                    <div className="file-chip" key={file.id} title={`${file.name} - ${formatBytes(file.size)}`}>
+                      <span>{file.name}</span>
+                      <small>{formatBytes(file.size)}</small>
+                      <button type="button" onClick={() => removeSessionFile(file.id)} aria-label={`Remove ${file.name}`}>
+                        <X size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="input-wrapper" style={{ background: 'var(--bg-glass-heavy)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-xl)' }}>
                 <textarea
+                  ref={textareaRef}
                   id="chat-input"
                   value={input}
                   onChange={(e) => {
-                    setInput(e.target.value);
-                    e.target.style.height = 'auto';
-                    e.target.style.height = (e.target.scrollHeight) + 'px';
+                    updateChatInput(e.target.value);
                   }}
                   onKeyDown={handleKeyDown}
-                  placeholder="Ask for a plan, motivation, or tips..."
+                  placeholder="Talk to Zeno..."
                   rows={1}
                   style={{ maxHeight: '150px' }}
                 />
                 
                 <div className="input-actions">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    className="sr-only"
+                    onChange={handleFileUpload}
+                    accept=".txt,.md,.markdown,.csv,.json,.jsonl,.xml,.html,.css,.js,.jsx,.ts,.tsx,.py,.java,.c,.cpp,.h,.hpp,.cs,.go,.rs,.php,.rb,.sql,.yaml,.yml,.log,text/*,application/json"
+                  />
+                  <button
+                    className="btn-icon"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isTyping}
+                    title="Attach files"
+                    aria-label="Attach files"
+                  >
+                    <Paperclip size={18} />
+                  </button>
+                  <select
+                    className="language-select"
+                    value={voiceLanguage}
+                    onChange={(e) => setVoiceLanguage(e.target.value)}
+                    disabled={isListening || isTyping}
+                    aria-label="Reply language"
+                    title="Reply language"
+                  >
+                    {voiceLanguages.map((language) => (
+                      <option key={language.code} value={language.code}>{language.label}</option>
+                    ))}
+                  </select>
+                  <button
+                    className={isListening ? 'btn-icon voice-active' : 'btn-icon'}
+                    onClick={handleVoiceInput}
+                    disabled={isTyping}
+                    title={isListening ? 'Stop voice input' : 'Start voice input'}
+                    aria-label={isListening ? 'Stop voice input' : 'Start voice input'}
+                  >
+                    <Mic size={18} />
+                  </button>
                   <button 
                     className="btn-icon primary" 
                     onClick={handleSend}
@@ -429,6 +780,7 @@ export default function App() {
                   </button>
                 </div>
               </div>
+              {voiceStatus && <div className="input-status">{voiceStatus}</div>}
             </div>
           </div>
         )}

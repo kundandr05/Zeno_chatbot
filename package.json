@@ -1,5 +1,5 @@
 {
-  "name": "life-assistant",
+  "name": "zeno",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -9,7 +9,6 @@
     "start": "vite preview --host 0.0.0.0 --port 10000"
   },
   "dependencies": {
-    "firebase": "^12.12.1",
     "lucide-react": "^1.14.0",
     "markdown-to-jsx": "^9.7.16",
     "react": "^19.2.5",

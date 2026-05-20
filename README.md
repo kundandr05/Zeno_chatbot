@@ -1,6 +1,6 @@
-# React + Vite
+# Zeno
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Zeno is a local-first conversational companion built with React and Vite. It keeps the existing dark futuristic interface while focusing on calm guidance, thoughtful memory, and natural conversations.
 
 Currently, two official plugins are available:
 
