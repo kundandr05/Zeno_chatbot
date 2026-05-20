@@ -6,6 +6,28 @@ const safeParse = (value, fallback) => {
   }
 };
 
+const sanitizeMemoryText = (value) => String(value || '')
+  .replace(/\b(User said:|You said:)\s*/gi, '')
+  .trim();
+
+const isIgnoredMemory = (value = '') => {
+  const text = sanitizeMemoryText(value).toLowerCase();
+  return [
+    'help me focus',
+    'solve my problem',
+    'study support',
+    'talk to me',
+    'calm my mind',
+    'help me out',
+    'what to do tomorrow',
+  ].some((phrase) => text.startsWith(phrase));
+};
+
+export const sanitizeMemoryArray = (items = []) => (Array.isArray(items) ? items.map((item) => {
+  if (typeof item === 'string') return sanitizeMemoryText(item);
+  return { ...item, text: sanitizeMemoryText(item.text) };
+}).filter((item) => !isIgnoredMemory(typeof item === 'string' ? item : item.text)) : []);
+
 export const todayKey = () => new Date().toISOString().slice(0, 10);
 
 export const storageKeys = (uid) => ({
@@ -58,7 +80,7 @@ export const addMemory = (uid, memory) => {
   const memories = loadArray(key);
   const next = [
     ...memories,
-    { id: Date.now(), text: memory, createdAt: new Date().toISOString() },
+    { id: Date.now(), text: sanitizeMemoryText(memory), createdAt: new Date().toISOString() },
   ].slice(-80);
   saveArray(key, next);
   return next;
@@ -139,13 +161,13 @@ export const extractSmartMemories = (message) => {
   const goalMatch = lower.match(/\b(?:i want to|i need to|my goal is|goal is|i have to)\s+(.+)/i);
   if (goalMatch?.[1]) {
     const value = goalMatch[1].replace(/[.!?]$/, '').trim();
-    memories.push(`Goal noted: ${value}`);
+    memories.push(value);
     tasks.push({ title: value, priority: 'high', source: 'chat-goal' });
   }
 
   const eventMatch = lower.match(/\b(?:exam|test|interview|meeting|deadline|submission)\b.*?(?:on|by|this|next)?\s*([a-z]+day|tomorrow|today|tonight|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)/i);
   if (eventMatch) {
-    memories.push(`Important date: ${text}`);
+    memories.push(text);
     tasks.push({ title: `Prepare for ${text}`, priority: 'high', source: 'chat-event', dueText: eventMatch[1] });
   }
 
@@ -153,53 +175,53 @@ export const extractSmartMemories = (message) => {
   if (reminderMatch?.[1]) {
     const value = reminderMatch[1].replace(/[.!?]$/, '').trim();
     const meta = inferTaskMeta(value);
-    memories.push(`Reminder requested: ${value}`);
+    memories.push(value);
     tasks.push({ title: value, priority: meta.priority, source: 'chat-reminder', dueText: meta.dueText, recurring: meta.recurring, reminderText: meta.reminderText });
   }
 
   const preferenceMatch = lower.match(/\b(?:i like|i prefer|i don't like|i hate|i love)\s+(.+)/i);
   if (preferenceMatch?.[1]) {
-    memories.push(`Preference: ${text}`);
+    memories.push(text);
   }
 
   if (/\b(?:cannot focus|can't focus|can not focus|distracted|phone usage|overthinking|overthink|procrastinating|procrastinate)\b/i.test(lower)) {
-    memories.push(`Focus pattern: ${text}`);
+    memories.push(text);
   }
 
   if (/\b(?:stressed|stress|anxious|overwhelmed|burnout|mentally tired|mental exhaustion|pressure)\b/i.test(lower)) {
-    memories.push(`Emotional pattern: ${text}`);
+    memories.push(text);
   }
 
   const habitMatch = lower.match(/\b(?:habit|routine|consistency|consistent|inconsistent)\b.*?(study|phone|planning|focus)?/i);
   if (habitMatch) {
-    memories.push(`Habit pattern: ${text}`);
+    memories.push(text);
   }
 
   const moodMatch = lower.match(/\b(?:i feel|feeling|i am|i'm)\s+(sad|okay|ok|good|great|stressed|anxious|tired|happy|scared|overwhelmed|lazy|confused)\b/i);
   if (moodMatch?.[1]) {
-    memories.push(`Emotional pattern: ${text}`);
+    memories.push(text);
   }
 
   const mainGoalMatch = lower.match(/\b(?:today(?:'s)? main goal is|main goal is|top priority is)\s+(.+)/i);
   if (mainGoalMatch?.[1]) {
     checkin.mainGoal = mainGoalMatch[1].replace(/[.!?]$/, '').trim();
-    memories.push(`Main goal update: ${checkin.mainGoal}`);
+    memories.push(checkin.mainGoal);
   }
 
   const blockerMatch = lower.match(/\b(?:blocker is|blocked by|stuck on|struggling with)\s+(.+)/i);
   if (blockerMatch?.[1]) {
     checkin.blocker = blockerMatch[1].replace(/[.!?]$/, '').trim();
-    memories.push(`Blocker update: ${checkin.blocker}`);
+    memories.push(checkin.blocker);
   }
 
   if (/\b(?:finished|completed|did)\s+(?:a\s+)?(?:focus block|deep work block|study block)\b/i.test(lower)) {
     checkin.focusBlockCompleted = true;
-    memories.push('Focus block update: completed');
+    memories.push('Completed a focus block');
   }
 
   if (/\b(?:planned tomorrow|prepared tomorrow|tomorrow is planned|set up tomorrow)\b/i.test(lower)) {
     checkin.planPrepared = true;
-    memories.push('Planning update: tomorrow prepared');
+    memories.push('Tomorrow is prepared');
   }
 
   return { memories, tasks, checkin };
@@ -212,9 +234,12 @@ export const saveExtractedMemories = (uid, message) => {
 
   if (extracted.memories.length) {
     const timestamp = new Date().toISOString();
+    const newMemories = extracted.memories
+      .map((text) => sanitizeMemoryText(text))
+      .filter((text) => text && !isIgnoredMemory(text));
     memories = [
       ...memories,
-      ...extracted.memories.map((text, index) => ({ id: Date.now() + index, text, createdAt: timestamp })),
+      ...newMemories.map((text, index) => ({ id: Date.now() + index, text, createdAt: timestamp })),
     ].slice(-80);
     saveArray(storageKeys(uid).memories, memories);
   }
@@ -249,7 +274,7 @@ export const loadLifeMemory = (uid) => ({
   today: getTodayCheckin(uid),
   tasks: loadTasks(uid),
   reminders: loadArray(storageKeys(uid).reminders),
-  memories: loadArray(storageKeys(uid).memories),
+  memories: sanitizeMemoryArray(loadArray(storageKeys(uid).memories)).filter((item) => !isIgnoredMemory(typeof item === 'string' ? item : item.text)),
 });
 
 export const weeklySummary = (uid) => {

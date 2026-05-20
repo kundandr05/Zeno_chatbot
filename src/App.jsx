@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Menu, User, Bot, PlusCircle, Trash2, Sun, Moon, MessageSquare, Clock, LogOut, Copy, Check, Mic, Share2, Paperclip, X, BrainCircuit, Flame, ListChecks, AlertCircle, GraduationCap, HeartHandshake } from 'lucide-react';
+import { Send, Menu, User, Bot, PlusCircle, Trash2, Sun, Moon, MessageSquare, Clock, LogOut, Copy, Check, Mic, Share2, Paperclip, X, BrainCircuit, ListChecks, GraduationCap, HeartHandshake } from 'lucide-react';
 import { PeacockFeatherIcon } from './PeacockFeatherIcon';
 import Markdown from 'markdown-to-jsx';
 import Login from './Login';
@@ -7,7 +7,7 @@ import Onboarding from './Onboarding';
 import Dashboard from './Dashboard';
 import { logoutUser, saveChatSessions, loadChatSessions, loadUserMemories, loadUserProfile, saveUserProfile } from './localAuthStore';
 import { processChatMessage, processChatMessageAsync } from './chatbotEngine';
-import { addMemory, loadLifeMemory, saveExtractedMemories } from './localStore';
+import { addMemory, loadLifeMemory, saveExtractedMemories, sanitizeMemoryArray } from './localStore';
 import './App.css';
 
 const voiceLanguages = [
@@ -51,12 +51,10 @@ const formatBytes = (bytes = 0) => {
 };
 
 const quickActions = [
-  { label: 'Help me focus', icon: BrainCircuit, prompt: 'Help me focus. Ask what is distracting me most and guide me calmly.' },
-  { label: 'Solve my problem', icon: ListChecks, prompt: 'Help me solve a real problem. Ask me the right question first.' },
-  { label: 'Study support', icon: GraduationCap, prompt: 'Give me study support for my current goal. Help me decide what to do first.' },
-  { label: 'Calm my mind', icon: AlertCircle, prompt: 'I feel overwhelmed. Calm my mind and help me think clearly.' },
-  { label: 'Motivate me', icon: Flame, prompt: 'I feel stuck. Give me a realistic motivation boost without fake positivity.' },
-  { label: 'Talk to me', icon: HeartHandshake, prompt: 'Talk to me like a calm companion. Help me understand what I am feeling and what to do next.' },
+  { label: 'Help me focus', icon: BrainCircuit, prompt: "Help me focus. What's making it difficult right now?" },
+  { label: 'Solve a problem', icon: ListChecks, prompt: "Solve my problem. What’s weighing on your mind?" },
+  { label: 'Study support', icon: GraduationCap, prompt: "Study support. What subject or topic feels hardest right now?" },
+  { label: 'Talk to me', icon: HeartHandshake, prompt: "Talk to me. What’s been sitting in your head lately?" },
 ];
 
 const CodeBlock = ({ className, children }) => {
@@ -95,12 +93,16 @@ export default function App() {
     const saved = localStorage.getItem('theme_dark_mode');
     return saved !== null ? JSON.parse(saved) : true;
   });
+  const [tonePreference, setTonePreference] = useState(() => {
+    const saved = localStorage.getItem('zeno_tone_preference');
+    return saved || 'Calm';
+  });
   
   const [userMemories, setUserMemories] = useState(() => {
     const uid = userAuth?.uid;
     if (!uid) return [];
       const saved = localStorage.getItem(`user_memories_${uid}`);
-      return saved ? JSON.parse(saved) : [];
+      return saved ? sanitizeMemoryArray(JSON.parse(saved)) : [];
   });
 
   const [sessions, setSessions] = useState(() => {
@@ -116,15 +118,16 @@ export default function App() {
   const [activeSessionId, setActiveSessionId] = useState(null);
 
   const [input, setInput] = useState('');
+  const inputRef = useRef('');
   const [voiceLanguage, setVoiceLanguage] = useState(() => {
     const saved = localStorage.getItem('preferred_language');
     return saved || userProfile?.preferredLanguage || 'en-IN';
   });
   const [isTyping, setIsTyping] = useState(false);
+  const isTypingRef = useRef(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState('');
-  
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [copiedIdx, setCopiedIdx] = useState(null);
   const [shareStatus, setShareStatus] = useState('');
@@ -133,6 +136,8 @@ export default function App() {
   const fileInputRef = useRef(null);
   const recognitionRef = useRef(null);
   const voiceBaseInputRef = useRef('');
+  const sessionsRef = useRef(sessions);
+  const activeSessionIdRef = useRef(activeSessionId);
 
   const activeSession = sessions.find(s => s.id === activeSessionId) || null;
   const messages = activeSession ? activeSession.messages : [];
@@ -141,6 +146,22 @@ export default function App() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping, currentView]);
+
+  useEffect(() => {
+    inputRef.current = input;
+  }, [input]);
+
+  useEffect(() => {
+    sessionsRef.current = sessions;
+  }, [sessions]);
+
+  useEffect(() => {
+    activeSessionIdRef.current = activeSessionId;
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    isTypingRef.current = isTyping;
+  }, [isTyping]);
 
   useEffect(() => {
     if (userAuth) {
@@ -157,6 +178,10 @@ export default function App() {
       document.body.classList.add('light-theme');
     }
   }, [isDarkMode]);
+
+  useEffect(() => {
+    localStorage.setItem('zeno_tone_preference', tonePreference);
+  }, [tonePreference]);
 
   useEffect(() => {
     return () => recognitionRef.current?.stop();
@@ -228,8 +253,9 @@ export default function App() {
   };
 
   const updateMessages = (newMessagesOrUpdater) => {
+    const sessionId = activeSessionIdRef.current;
     setSessions(prevSessions => prevSessions.map(session => {
-      if (session.id === activeSessionId) {
+      if (session.id === sessionId) {
         const updatedMessages = typeof newMessagesOrUpdater === 'function' 
           ? newMessagesOrUpdater(session.messages) 
           : newMessagesOrUpdater;
@@ -247,9 +273,9 @@ export default function App() {
     }));
   };
 
-  const createNewChat = () => {
+  const createNewChat = (initialPrompt = '') => {
     const lifeMemory = userAuth?.uid ? loadLifeMemory(userAuth.uid) : {};
-    const greeting = processChatMessage('hello', userProfile, { ...lifeMemory, memories: userMemories }, { language: voiceLanguage });
+    const greeting = processChatMessage('hello', userProfile, { ...lifeMemory, memories: userMemories }, { language: voiceLanguage, tone: tonePreference });
     const newSession = {
       id: Date.now(),
       title: 'New Chat',
@@ -259,7 +285,13 @@ export default function App() {
     setSessions([newSession, ...sessions]);
     setActiveSessionId(newSession.id);
     setCurrentView('chat');
+    setInput(initialPrompt);
     if (window.innerWidth <= 768) setSidebarOpen(false);
+    if (initialPrompt.trim()) {
+      setTimeout(() => {
+        if (!isTypingRef.current) handleSend(initialPrompt);
+      }, 180);
+    }
   };
 
   const deleteSession = (id, e) => {
@@ -272,25 +304,28 @@ export default function App() {
     }
   };
 
-  const handleSend = () => {
-    if (!input.trim() || isTyping) return;
+  const handleSend = (overrideText = null) => {
+    const text = overrideText !== null ? overrideText.trim() : inputRef.current.trim();
+    if (!text || isTypingRef.current) return;
     recognitionRef.current?.stop();
 
-    const userMsg = { role: 'user', content: input.trim(), timestamp: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) };
-    const newHistory = [...messages, userMsg];
+    const currentSession = sessionsRef.current.find((session) => session.id === activeSessionIdRef.current);
+    const currentMessages = currentSession?.messages || [];
+    const userMsg = { role: 'user', content: text, timestamp: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) };
+    const newHistory = [...currentMessages, userMsg];
     updateMessages(newHistory);
     setInput('');
     setIsTyping(true);
 
     // Simulate thoughtful local reasoning, then stream the response in the UI.
     setTimeout(async () => {
-      addMemory(userAuth.uid, `User said: ${userMsg.content}`);
+      addMemory(userAuth.uid, userMsg.content);
       const extraction = saveExtractedMemories(userAuth.uid, userMsg.content);
       const updatedMemories = extraction.memories;
       setUserMemories(updatedMemories);
       const lifeMemory = loadLifeMemory(userAuth.uid);
-      const currentSession = sessions.find((session) => session.id === activeSessionId);
-      const responseContent = await processChatMessageAsync(userMsg.content, userProfile, { ...lifeMemory, memories: updatedMemories }, { language: voiceLanguage, files: currentSession?.files || [], recentMessages: newHistory.slice(-8) });
+      const currentSession = sessionsRef.current.find((session) => session.id === activeSessionIdRef.current);
+      const responseContent = await processChatMessageAsync(userMsg.content, userProfile, { ...lifeMemory, memories: updatedMemories }, { language: voiceLanguage, files: currentSession?.files || [], recentMessages: newHistory.slice(-8), tone: tonePreference });
       const fullResponse = responseContent;
       const botId = Date.now() + 10;
       const botMsg = { id: botId, role: 'bot', content: '', streaming: true, timestamp: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) };
@@ -315,9 +350,14 @@ export default function App() {
   };
 
   const handleQuickAction = (prompt) => {
-    if (isTyping) return;
-    updateChatInput(prompt);
+    if (isTypingRef.current) return;
+    if (currentView !== 'chat' || !activeSession) {
+      createNewChat(prompt);
+      return;
+    }
+    setInput(prompt);
     textareaRef.current?.focus();
+    setTimeout(() => handleSend(prompt), 180);
   };
 
   const addFilesToActiveSession = (files) => {
@@ -527,10 +567,23 @@ export default function App() {
         </div>
         
         <div className="sidebar-content" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          <button className="sidebar-btn new-chat-btn" onClick={createNewChat}>
+          <button className="sidebar-btn new-chat-btn" onClick={() => createNewChat('')}>
             <PlusCircle size={20} className="text-accent-primary" /> New Chat
           </button>
-          
+          <div className="tone-settings glass-panel-hover">
+            <label htmlFor="tone-select" className="tone-label">Tone</label>
+            <select
+              id="tone-select"
+              className="tone-select"
+              value={tonePreference}
+              onChange={(e) => setTonePreference(e.target.value)}
+            >
+              <option value="Calm">Calm</option>
+              <option value="Direct">Direct</option>
+              <option value="Friendly">Friendly</option>
+              <option value="Mentor">Mentor-like</option>
+            </select>
+          </div>
           <div className="history-label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1.5rem', marginBottom: '0.5rem', fontSize: '0.8rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
             <Clock size={14} /> History
           </div>
@@ -587,7 +640,7 @@ export default function App() {
       {/* Main Area */}
       <div className="main-area">
         {currentView === 'dashboard' && (
-          <Dashboard user={userAuth} userProfile={userProfile} onNewChat={createNewChat} />
+          <Dashboard user={userAuth} userProfile={userProfile} onNewChat={createNewChat} quickActions={quickActions} onQuickAction={handleQuickAction} />
         )}
 
         {currentView === 'chat' && activeSession && (

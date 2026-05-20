@@ -1003,6 +1003,51 @@ body.light-theme .orb {
   transition: var(--transition);
 }
 
+.tone-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.tone-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.tone-select {
+  width: 100%;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 0.7rem 0.85rem;
+  background: rgba(9, 13, 20, 0.9);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.recent-list {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.75rem;
+}
+
+.recent-item {
+  width: 100%;
+  padding: 0.95rem 1rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+  background: rgba(9, 13, 20, 0.42);
+  color: var(--text-primary);
+  text-align: left;
+  font-weight: 500;
+}
+
 .dashboard-card:hover,
 .analytics-card:hover,
 .chat-welcome-panel:hover,
