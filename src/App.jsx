@@ -51,10 +51,10 @@ const formatBytes = (bytes = 0) => {
 };
 
 const quickActions = [
-  { label: 'Help me focus', icon: BrainCircuit, prompt: "Help me focus. What's making it difficult right now?" },
-  { label: 'Solve a problem', icon: ListChecks, prompt: "Solve my problem. What’s weighing on your mind?" },
-  { label: 'Study support', icon: GraduationCap, prompt: "Study support. What subject or topic feels hardest right now?" },
-  { label: 'Talk to me', icon: HeartHandshake, prompt: "Talk to me. What’s been sitting in your head lately?" },
+  { label: 'Help me focus', icon: BrainCircuit, prompt: "Help me focus. Name the single task and the main distraction." },
+  { label: 'Solve a problem', icon: ListChecks, prompt: "Solve my problem. Briefly describe the decision or barrier." },
+  { label: 'Study support', icon: GraduationCap, prompt: "Study support. Which topic or task do you want a short plan for?" },
+  { label: 'Talk to me', icon: HeartHandshake, prompt: "Talk to me. Say what’s been on your mind in one sentence." },
 ];
 
 const CodeBlock = ({ className, children }) => {
@@ -355,13 +355,19 @@ export default function App() {
 
   const handleQuickAction = (prompt) => {
     if (isTypingRef.current) return;
+    // Build a contextual prompt using recent memories and profile hints
+    const recent = (userMemories || []).slice(-3).map((m) => (typeof m === 'string' ? m : m.text)).filter(Boolean).join(' • ');
+    const contextHint = recent ? `Context: ${recent}` : (userProfile?.occupation ? `Context: ${userProfile.occupation}` : '');
+    const dynamicPrompt = contextHint ? `${prompt} — ${contextHint}` : prompt;
+
     if (currentView !== 'chat' || !activeSession) {
-      createNewChat(prompt);
+      createNewChat(dynamicPrompt);
       return;
     }
-    setInput(prompt);
+
+    setInput(dynamicPrompt);
     textareaRef.current?.focus();
-    setTimeout(() => handleSend(prompt), 180);
+    setTimeout(() => handleSend(dynamicPrompt), 180);
   };
 
   const addFilesToActiveSession = (files) => {

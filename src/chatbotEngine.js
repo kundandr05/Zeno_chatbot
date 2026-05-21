@@ -85,6 +85,7 @@ const classifyIntent = (input) => {
   if (includesAny(text, ['decide', 'decision', 'confused', 'confusion', 'choose', 'problem', 'solve', 'help me', 'help', 'help out'])) return 'problem';
   if (includesAny(text, ['task', 'todo', 'to do', 'deadline', 'reminder', 'priority'])) return 'tasks';
   if (includesAny(text, ['stress', 'stressed', 'anxious', 'tired', 'scared', 'sad', 'overwhelmed', 'mood'])) return 'emotional';
+  if (includesAny(text, ['money', 'career', 'job', 'salary', 'freelance', 'gig', 'hire', 'employed', 'work', 'portfolio'])) return 'career';
   if (/\?$/.test(input.trim()) || /^(what|why|how|when|where|explain|define|tell me about)\b/i.test(input.trim())) return 'question';
   return 'conversation';
 };
@@ -158,14 +159,17 @@ const memoryNudge = (state, type) => {
 };
 
 const followUpFor = (intent, emotion, state) => {
-  if (intent === 'focus') return 'What is distracting you the most right now?';
-  if (intent === 'study') return 'Which subject or chapter worries you most?';
-  if (intent === 'problem') return 'What part feels most unclear: choosing, starting, staying consistent, or handling pressure?';
-  if (intent === 'tasks') return 'Which item would help most if it moved forward today?';
-  if (intent === 'emotional' && emotion === 'anxious') return 'What is the exact fear underneath it?';
-  if (intent === 'calm') return 'What thought keeps coming back the loudest?';
-  if (state.tasks.length) return `Should we begin with "${state.tasks[0].title}", or is something else heavier today?`;
-  return 'What feels hardest right now?';
+  // Provide varied, useful follow-ups that encourage concrete next steps
+  if (intent === 'focus') return 'Which single task would reduce the most pressure if you moved it forward now?';
+  if (intent === 'study') return 'Which short target will make you feel more prepared: a problem, a summary, or one revision pass?';
+  if (intent === 'problem') return 'Which part should we simplify first: choosing, starting, or staying consistent?';
+  if (intent === 'tasks') return 'Pick one item here to make progress on—shall I help break it into a 10-minute first step?';
+  if (intent === 'emotional' && emotion === 'anxious') return 'Can you name the fear in one sentence so we can test it against reality?';
+  if (intent === 'calm') return 'Write the main worry in one sentence — want help turning that into one small action?';
+  if (intent === 'career') return 'Are you looking for short-term income, a role change, or a long-term plan?';
+  if (state.tasks.length) return `Would you prefer to start with "${state.tasks[0].title}" or pick something lighter to gain motion?`;
+  // Default: encourage a concrete, not-feels-based answer
+  return 'Tell me one small thing we can try now — want the fastest or the safest option?';
 };
 
 const warmOpening = (name, emotion, seed) => choice({
@@ -355,12 +359,38 @@ const conversationBridge = (input, state, options = {}) => {
 
 const applyTone = (text, tone) => {
   if (!tone || tone === 'Calm') return text;
-  const suffix = {
-    Direct: 'Keep it practical and clear.',
-    Friendly: 'I’m here.',
-    Mentor: 'Let’s keep it simple.',
-  }[tone];
-  return suffix ? `${text.trim()}\n\n${suffix}` : text;
+  const t = String(tone || '').toLowerCase();
+
+  if (t === 'direct') {
+    const cleaned = String(text).replace(/^(Okay,|Alright,|I can hear that,?)/i, '').trim();
+    const sentences = cleaned.split(/(?<=[.!?])\s+/).slice(0, 2).join(' ');
+    return `${sentences}\n\nAction: pick one specific next step and start.`;
+  }
+
+  if (t === 'friendly') {
+    return `${String(text).trim()}\n\nIf you like, I can help break this into a tiny first move — want me to do that?`;
+  }
+
+  if (t === 'mentor' || t === 'mentor-like') {
+    return `${String(text).trim()}\n\nSuggestion: choose the smallest action that proves progress, then repeat.`;
+  }
+
+  return text;
+};
+
+// Add a short, practical career helper
+const buildCareerReply = (input, profile, memory) => {
+  const state = memoryProfile(profile, memory);
+  const skills = profile?.skills ? profile.skills.slice(0, 6).join(', ') : (profile?.occupation || state.currentFocus || 'your skills');
+  return [
+    `${firstName(profile)}, here are practical next moves based on ${skills}:`,
+    '',
+    '- Apply for small freelance gigs that match your current projects.',
+    '- Build one showcase piece that demonstrates the exact skill people hire for.',
+    '- Network with two contacts and ask for one critique or short task.',
+    '',
+    'Which of these sounds doable this week?'
+  ].join('\n');
 };
 
 export const processChatMessage = (input, userProfile, memory = {}, options = {}) => {
@@ -383,6 +413,7 @@ export const processChatMessage = (input, userProfile, memory = {}, options = {}
   else if (intent === 'tasks') response = buildTasksReply(userProfile, memory);
   else if (intent === 'motivation') response = buildMotivationReply(input, userProfile, memory);
   else if (intent === 'emotional') response = buildEmotionalReply(input, userProfile, memory);
+  else if (intent === 'career') response = buildCareerReply(input, userProfile, memory);
   else if (intent === 'question') response = buildQuestionReply(input, userProfile, memory);
   else {
     response = [
