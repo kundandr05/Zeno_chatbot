@@ -5,6 +5,25 @@ const openTasks = (memory) => (memory?.tasks || []).filter((task) => !task.compl
 const cleanMemoryText = (text = '') => String(text)
   .replace(/\b(User said:|You said:)\s*/gi, '')
   .trim();
+const firstSentence = (text = '') => {
+  const cleaned = String(text).trim();
+  if (!cleaned) return '';
+  return cleaned.split(/(?<=[.!?])\s+/)[0].replace(/[.!?]+$/g, '').trim();
+};
+const isSmallTalk = (text = '') => includesAny(normalize(text), [
+  'hello',
+  'hi',
+  'hey',
+  'good morning',
+  'good afternoon',
+  'good evening',
+  'how are you',
+  'how are u',
+  'how r u',
+  'hru',
+  'thanks',
+  'thank you',
+]);
 const isIgnoredMemory = (text = '') => {
   const cleaned = cleanMemoryText(text).toLowerCase();
   return ['help me focus', 'solve my problem', 'study support', 'talk to me', 'calm my mind', 'help me out'].some((phrase) => cleaned.startsWith(phrase));

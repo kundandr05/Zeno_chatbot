@@ -282,7 +282,11 @@ export default function App() {
       files: [],
       messages: [{ role: 'bot', content: greeting, timestamp: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) }]
     };
-    setSessions([newSession, ...sessions]);
+
+    const nextSessions = [newSession, ...sessionsRef.current];
+    sessionsRef.current = nextSessions;
+    activeSessionIdRef.current = newSession.id;
+    setSessions(nextSessions);
     setActiveSessionId(newSession.id);
     setCurrentView('chat');
     setInput(initialPrompt);
