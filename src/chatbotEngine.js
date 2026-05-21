@@ -152,75 +152,73 @@ const answerFromFiles = (input, files = []) => {
 };
 
 const memoryNudge = (state, type) => {
-  if (type === 'focus' && state.focusNotes.length) return 'You mentioned focus getting interrupted before. I would keep the next step familiar and simple.';
-  if (type === 'emotion' && state.emotionalNotes.length) return 'You brought this up earlier too, so I would keep the next move small and practical.';
-  if (type === 'goal' && state.goalNotes.length) return `Your earlier goal was: ${state.goalNotes.at(-1).replace(/^Goal noted:\s*/i, '')}.`;
+  if (type === 'focus' && state.focusNotes.length) return 'Focus has been interrupted before; keep the next step familiar and simple.';
+  if (type === 'emotion' && state.emotionalNotes.length) return 'This showed up earlier too, so keep the next move small and practical.';
+  if (type === 'goal' && state.goalNotes.length) return `The last goal was ${state.goalNotes.at(-1).replace(/^Goal noted:\s*/i, '')}.`;
   return '';
 };
 
 const followUpFor = (intent, emotion, state) => {
-  // Provide varied, useful follow-ups that encourage concrete next steps
-  if (intent === 'focus') return 'Which single task would reduce the most pressure if you moved it forward now?';
-  if (intent === 'study') return 'Which short target will make you feel more prepared: a problem, a summary, or one revision pass?';
-  if (intent === 'problem') return 'Which part should we simplify first: choosing, starting, or staying consistent?';
-  if (intent === 'tasks') return 'Pick one item here to make progress on—shall I help break it into a 10-minute first step?';
-  if (intent === 'emotional' && emotion === 'anxious') return 'Can you name the fear in one sentence so we can test it against reality?';
-  if (intent === 'calm') return 'Write the main worry in one sentence — want help turning that into one small action?';
-  if (intent === 'career') return 'Are you looking for short-term income, a role change, or a long-term plan?';
-  if (state.tasks.length) return `Would you prefer to start with "${state.tasks[0].title}" or pick something lighter to gain motion?`;
-  // Default: encourage a concrete, not-feels-based answer
-  return 'Tell me one small thing we can try now — want the fastest or the safest option?';
+  if (intent === 'focus') return 'What is the one task that will reduce the most friction today?';
+  if (intent === 'study') return 'Which topic should we lock in first: concept, example, or practice question?';
+  if (intent === 'problem') return 'What specific decision or step is blocking progress?';
+  if (intent === 'tasks') return 'Which open item would move the needle most if it moved forward once?';
+  if (intent === 'emotional') return 'What exact problem is this causing in your day?';
+  if (intent === 'calm') return 'Name the main blockage and one small action to reduce it.';
+  if (intent === 'career') return 'Are you aiming for income now, skill growth, or a better role?';
+  if (state.tasks.length) return `Start with "${state.tasks[0].title}" or tell me which item feels more urgent.`;
+  return 'Give me the key issue and I’ll help narrow it down.';
 };
 
 const warmOpening = (name, emotion, seed) => choice({
   anxious: [
-    `${name}, it sounds like your head is trying to solve too much at once.`,
-    `${name}, I can hear the pressure there. Let’s make it smaller.`,
+    `${name}, there’s too much noise. Let’s narrow this to one clear next step.`,
+    `${name}, the useful move is smaller than it feels. Pick one thing and finish it.`,
   ],
   stressed: [
-    `${name}, this feels more like overload than laziness.`,
-    `${name}, when everything seems urgent, the first move is to reduce the noise.`,
+    `${name}, urgency is not progress. Let’s make this manageable and concrete.`,
+    `${name}, handle one thing that reduces pressure, then reassess.`,
   ],
   tired: [
-    `${name}, if you are mentally tired, a perfect routine is not the best first step.`,
-    `${name}, low energy needs something easier, not harsher.`,
+    `${name}, the best step is one that does not need more energy than you have.`,
+    `${name}, choose a low-effort action that still moves something forward.`,
   ],
   stuck: [
-    `${name}, stuck usually means the next step is too vague or too heavy.`,
-    `${name}, we do not need drama. We need a first move that feels possible.`,
+    `${name}, stuck means the step is unclear. I can help make it specific.`,
+    `${name}, the next move should feel obvious, not perfect.`,
   ],
   low: [
-    `${name}, that is a rough spot. Keep the next move small.`,
-    `${name}, this is hard, so let us not demand too much right now.`,
+    `${name}, let’s keep this practical and avoid overthinking it.`,
+    `${name}, stay with the most useful next action, not the ideal one.`,
   ],
   positive: [
-    `${name}, that is good. Let’s use that energy without overloading it.`,
-    `${name}, momentum matters. I would point it at one useful thing first.`,
+    `${name}, use that momentum on one thing that actually changes the day.`,
+    `${name}, focus the energy on a result, not just keeping busy.`,
   ],
   sensitive: [
-    `${name}, this feels connected to what you’ve been carrying lately.`,
-    `${name}, I remember this kind of pressure has shown up before.`,
+    `${name}, this is worth clearing in a direct way. We can do that together.`,
+    `${name}, I’m aiming for clarity, not extra feeling.`,
   ],
   steady: [
-    `${name}, I can work with that.`,
-    `${name}, let’s keep this simple.`,
+    `${name}, good. Let’s make the next move concrete.`,
+    `${name}, the most useful step is the one you can finish now.`,
   ],
 }[emotion] || [], seed);
 
 const buildGreeting = (profile, memory, input = '') => {
-  const remembered = meaningfulMemory(memory);
+  const lastGoal = meaningfulMemory(memory) || profile?.occupation || 'your current goal';
   const lower = normalize(input);
-  if (includesAny(lower, ['how are you', 'how are u', 'how r u', 'hru', 'how is it going', 'how you doing'])) {
-    return `I’m okay. How are you?`;
+  if (includesAny(lower, ['how are you', 'how are u', 'how are you doing', 'hru'])) {
+    return 'I’m ready to help with the next thing. What do you want to move forward on?';
   }
 
   const options = [
-    `Hey ${firstName(profile)}. ${remembered ? `You mentioned before that ${remembered}.` : 'What’s been on your mind today?'}`,
-    `Hey ${firstName(profile)}. ${remembered ? `Last time you were dealing with ${remembered}.` : 'How has your day been so far?'}`,
-    `${firstName(profile)}, should we continue where we left off or start fresh?`,
-    `Hi ${firstName(profile)}. ${remembered ? `You said ${remembered} earlier.` : 'What feels most important right now?'}`,
+    `Hey ${firstName(profile)}. ${lastGoal ? `You were focused on ${lastGoal}.` : 'Tell me the one thing you want to solve.'}`,
+    `${firstName(profile)}, pick one concrete issue and I’ll help narrow the next step.`,
+    `Hi ${firstName(profile)}. Describe the problem or goal in one sentence.`,
+    `Let’s sort this out. Start with the main obstacle or decision.`,
   ];
-  return choice(options, `${firstName(profile)} ${remembered}`);
+  return choice(options, `${firstName(profile)} ${lastGoal}`);
 };
 
 const buildFocusReply = (input, profile, memory) => {
@@ -241,14 +239,14 @@ const buildEmotionalReply = (input, profile, memory) => {
   const opening = warmOpening(firstName(profile), emotion, input);
   const nudge = memoryNudge(state, 'emotion');
   const next = {
-    anxious: 'Name the fear in one sentence, then choose one small action that gives you a bit of evidence.',
-    stressed: 'Write down the loudest loop and pick one thing you can handle first. Let the rest wait.',
-    tired: 'Lower the demand. Pick one short thing that can finish without much effort.',
-    stuck: 'Try one ten-minute version. The goal is just to get a little motion going.',
-    low: 'Keep the day smaller. One honest message to yourself or one easy action is enough.',
-    positive: `Use the energy on ${state.currentFocus}. Keep it specific so it does not spread too thin.`,
-    sensitive: 'It is okay to keep this slow. One small step is enough for now.',
-    steady: `The next useful move is connected to ${state.currentFocus}. Keep it simple enough to finish.`,
+    anxious: 'Treat this as a decision problem: what is the next concrete move? Choose one action and test it.',
+    stressed: 'Break the task into a single first action and do that before anything else.',
+    tired: 'Pick one short, low-effort task that still gives you momentum.',
+    stuck: 'The goal is not perfect clarity. Do the smallest useful thing and see what changes.',
+    low: 'Keep the next move small and specific so it is easy to complete.',
+    positive: `Put your energy on ${state.currentFocus} with one simple result in mind.`,
+    sensitive: 'Focus on one practical step instead of trying to solve everything at once.',
+    steady: `Make the next step tied to ${state.currentFocus} and finish it.`,
   }[emotion];
 
   return [
@@ -263,11 +261,11 @@ const buildEmotionalReply = (input, profile, memory) => {
 const buildCalmReply = (input, profile, memory) => {
   const state = memoryProfile(profile, memory);
   return [
-    `${firstName(profile)}, okay. Don’t try to fix everything at once.`,
+    `${firstName(profile)}, identify the exact block first.`,
     '',
-    'Write the main worry in one plain sentence, then pick one small thing you can do next.',
+    `Name the one thing that is slowing you down, then choose a next action that is easy to start.`,
     '',
-    `After that, choose one controllable action connected to ${state.currentFocus}. Small is fine.`,
+    `Keep it tied to ${state.currentFocus} so this stays practical.`,
     '',
     followUpFor('calm', 'steady', state),
   ].join('\n');
@@ -277,11 +275,11 @@ const buildProblemReply = (input, profile, memory) => {
   const state = memoryProfile(profile, memory);
   const topic = extractTopic(input).replace(/^(help me solve|solve|problem|i am confused about|i'm confused about)\s+/i, '') || state.blocker || state.currentFocus;
   return [
-    `${firstName(profile)}, okay. Let’s make this clearer.`,
+    `${firstName(profile)}, here’s a practical way through this.`,
     '',
-    `For "${topic}", notice what you can actually change and pick the smallest step that makes it feel less overwhelming. You do not need the perfect answer right now.`,
+    `Separate what you can control from what you can’t, then choose one small action that moves the situation forward.`,
     '',
-    'If your day feels overloaded, choose the thing that helps you feel steadier first.',
+    `For ${topic}, start with the first step you can complete in under 15 minutes.`,
     '',
     followUpFor('problem', 'steady', state),
   ].join('\n');
@@ -304,11 +302,11 @@ const buildStudyReply = (input, profile, memory) => {
 const buildMotivationReply = (input, profile, memory) => {
   const state = memoryProfile(profile, memory);
   return [
-    `${firstName(profile)}, I will not pretend motivation is always there on demand.`,
+    `${firstName(profile)}, this is about starting, not feeling ready.`,
     '',
-    `You can make starting less dramatic. Choose the smallest useful action connected to ${state.currentFocus}, and do it for ten minutes. Once your brain sees motion, it usually quiets down.`,
+    `Choose the smallest action that produces a real result for ${state.currentFocus}. Then commit to it for a short block.`,
     '',
-    'You do not need to feel like a different person today. You only need one clear, manageable first step.',
+    'The point is progress, not perfect momentum.',
     '',
     followUpFor('conversation', 'steady', state),
   ].join('\n');
@@ -347,11 +345,11 @@ const conversationBridge = (input, state, options = {}) => {
   const lastBot = [...(options.recentMessages || [])].reverse().find((message) => message.role === 'bot')?.content || '';
   if (!lastBot) return '';
 
-  if (/pressure, distractions, overthinking, or mental exhaustion/i.test(lastBot)) {
-    if (includesAny(lower, ['pressure', 'deadline', 'exam', 'expectation'])) return 'Then pressure is the main weight. We should reduce uncertainty first: choose one visible action that proves progress, even if it is small.';
-    if (includesAny(lower, ['distraction', 'phone', 'mobile', 'instagram', 'youtube', 'reels'])) return 'Then the environment is louder than your intention. Move the distraction away for one short block, and make the task visible before you start.';
-    if (includesAny(lower, ['overthinking', 'thoughts', 'worry', 'mind'])) return 'Then the distraction is internal. Put the thought in one sentence on paper, promise to return to it later, and restart with the next tiny action.';
-    if (includesAny(lower, ['tired', 'exhausted', 'mental', 'energy'])) return 'Then we should not treat this as laziness. Use a lighter block and give your brain a clear finish line.';
+  if (/pressure|distractions|overthinking|mental exhaustion/i.test(lastBot)) {
+    if (includesAny(lower, ['pressure', 'deadline', 'exam', 'expectation'])) return 'Pressure comes from uncertainty. Pick the most visible progress step and do it now.';
+    if (includesAny(lower, ['distraction', 'phone', 'mobile', 'instagram', 'youtube', 'reels'])) return 'Clear the distraction first, then start with one task that you can actually finish.';
+    if (includesAny(lower, ['overthinking', 'thoughts', 'worry', 'mind'])) return 'Stop chasing the thought. Write it once and move to one concrete action.';
+    if (includesAny(lower, ['tired', 'exhausted', 'energy'])) return 'Low energy means one shorter, clearer task is better than a long plan.';
   }
 
   return '';
@@ -368,7 +366,7 @@ const applyTone = (text, tone) => {
   }
 
   if (t === 'friendly') {
-    return `${String(text).trim()}\n\nIf you like, I can help break this into a tiny first move — want me to do that?`;
+    return `${String(text).trim()}\n\nI can help make the next step easier to start.`;
   }
 
   if (t === 'mentor' || t === 'mentor-like') {
@@ -376,6 +374,24 @@ const applyTone = (text, tone) => {
   }
 
   return text;
+};
+
+const sanitizeResponse = (text) => {
+  const banned = [
+    "I'm here.",
+    'I’m here.',
+    'Let’s keep it simple.',
+    'What feels important right now?',
+    'Would you like me to break this into a tiny step?',
+    'I can work with that.',
+    'It looks like',
+    'Your earlier goal was',
+    'Should we continue where we left off?',
+    'What feels hardest?',
+    'How does that make you feel?',
+    'Take a deep breath.',
+  ];
+  return banned.reduce((result, phrase) => result.replace(phrase, ''), String(text)).replace(/\s{2,}/g, ' ').trim();
 };
 
 // Add a short, practical career helper
@@ -419,13 +435,13 @@ export const processChatMessage = (input, userProfile, memory = {}, options = {}
     response = [
       warmOpening(firstName(userProfile), classifyEmotion(input, state), input),
       '',
-      `It looks like ${state.currentFocus} is still in play. What feels most important right now?`,
+      `Identify the main obstacle or decision, then pick one concrete step to move it forward.`,
       '',
       followUpFor('conversation', 'steady', state),
     ].join('\n');
   }
 
-  return applyTone(response, options.tone);
+  return sanitizeResponse(applyTone(response, options.tone));
 };
 
 export const processChatMessageAsync = async (input, userProfile, memory = {}, options = {}) => (
