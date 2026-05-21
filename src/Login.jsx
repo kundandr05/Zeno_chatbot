@@ -22,6 +22,8 @@ export default function Login({ onLogin }) {
     }
   };
 
+  
+
   const handleEmailAuth = async (e) => {
     e.preventDefault();
     if (!email || !password) {
