@@ -7,7 +7,6 @@ export default function Onboarding({ user, onComplete }) {
     fullName: user?.displayName || '',
     dob: '',
     age: '',
-    occupation: '',
     preferredLanguage: 'en-IN',
   });
 
@@ -64,11 +63,6 @@ export default function Onboarding({ user, onComplete }) {
               <label>Age</label>
               <input type="number" name="age" min="1" max="120" value={formData.age} onChange={handleChange} className="onboarding-input" placeholder="Optional if DOB set" />
             </div>
-          </div>
-
-          <div className="input-group">
-            <label><Briefcase size={16} /> Occupation / Student</label>
-            <input type="text" name="occupation" placeholder="e.g. Student, Designer, Engineer" value={formData.occupation} onChange={handleChange} required pattern=".*\S.*" title="Please enter your occupation or student status." className="onboarding-input" />
           </div>
 
           <div className="input-group">
