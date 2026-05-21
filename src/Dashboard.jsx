@@ -43,20 +43,57 @@ export default function Dashboard({ user, onNewChat, quickActions, onQuickAction
           </button>
         ))}
       </section>
+      <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
+        <div className="glass-panel dashboard-card">
+          <div className="card-title"><MessageCircle size={18} /> Recent conversations</div>
+          {recentConversations.length > 0 ? (
+            <div className="recent-list">
+              {recentConversations.map((session) => (
+                <div key={session.id} className="recent-item">
+                  {session.title}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="muted">You don’t need perfect words to start. Zeno is ready whenever you are.</p>
+          )}
+        </div>
 
-      <section className="glass-panel dashboard-card recent-panel">
-        <div className="card-title"><MessageCircle size={22} /> Recent conversations</div>
-        {recentConversations.length > 0 ? (
-          <div className="recent-list">
-            {recentConversations.map((session) => (
-              <div key={session.id} className="recent-item">
-                {session.title}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="muted">You don’t need perfect words to start. Zeno is ready whenever you are.</p>
-        )}
+        <div className="glass-panel dashboard-card">
+          <div className="card-title"><Sparkles size={18} /> Remembered goals & suggestions</div>
+          {uid ? (
+            (() => {
+              try {
+                const mems = JSON.parse(localStorage.getItem(`user_memories_${uid}`) || '[]').slice(-6).reverse();
+                const goals = mems.filter((m) => typeof m === 'string' && /goal|want|need|prepare|study|deadline|interview/i.test(m)).slice(0, 3);
+                const others = mems.filter((m) => typeof m === 'string' && !goals.includes(m)).slice(0, 3);
+                return (
+                  <div>
+                    {goals.length > 0 && (
+                      <div style={{ marginBottom: '0.6rem' }}>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>Saved goals</div>
+                        {goals.map((g, i) => <div key={i} className="muted" style={{ marginTop: '0.25rem' }}>{g}</div>)}
+                      </div>
+                    )}
+                    {others.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>Recent notes</div>
+                        {others.map((g, i) => <div key={i} className="muted" style={{ marginTop: '0.25rem' }}>{g}</div>)}
+                      </div>
+                    )}
+                    {goals.length === 0 && others.length === 0 && (
+                      <p className="muted">No remembered goals yet. Mention a goal in chat and I will keep it in the background.</p>
+                    )}
+                  </div>
+                );
+              } catch (e) {
+                return <p className="muted">No remembered goals yet.</p>;
+              }
+            })()
+          ) : (
+            <p className="muted">Sign in to save goals and get smart suggestions.</p>
+          )}
+        </div>
       </section>
     </div>
   );

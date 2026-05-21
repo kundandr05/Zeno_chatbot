@@ -275,7 +275,13 @@ export default function App() {
 
   const createNewChat = (initialPrompt = '') => {
     const lifeMemory = userAuth?.uid ? loadLifeMemory(userAuth.uid) : {};
-    const greeting = processChatMessage('hello', userProfile, { ...lifeMemory, memories: userMemories }, { language: voiceLanguage, tone: tonePreference });
+    const lastMem = (userMemories || []).slice(-1)[0] || lifeMemory.today?.mainGoal || lifeMemory.tasks?.[0]?.title || userProfile?.occupation || '';
+    const openingPrompt = lastMem
+      ? `You were working on ${String(lastMem).slice(0, 120)}. Did you make progress or get stuck somewhere?`
+      : 'Hey — what would you like to focus on right now?';
+
+    const greeting = processChatMessage(openingPrompt, userProfile, { ...lifeMemory, memories: userMemories }, { language: voiceLanguage, tone: tonePreference });
+
     const newSession = {
       id: Date.now(),
       title: 'New Chat',
